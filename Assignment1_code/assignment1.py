@@ -1,4 +1,35 @@
 import trimesh
+def split_edges(mesh):
+    """
+    Splits each edge of the mesh into two halves by adding a new vertex at the midpoint of each edge.
+
+    :param mesh: The input mesh.
+    :return: A tuple containing the updated mesh with new vertices and a mapping of old to new edge indices.
+    """
+    # Implementation goes here
+    return updated_mesh, edge_mapping
+
+def update_vertex_positions(mesh, edge_mapping):
+    """
+    Updates the positions of the original vertices based on local averaging with neighboring vertex positions.
+
+    :param mesh: The mesh with newly inserted vertices from split_edges.
+    :param edge_mapping: A mapping of old to new edge indices, as returned by split_edges.
+    :return: The mesh with updated vertex positions.
+    """
+    # Implementation goes here
+    return updated_mesh
+def split_faces(mesh, edge_mapping):
+    """
+    Updates the face indices to reflect the new vertices and divides each original triangle into four new triangles.
+
+    :param mesh: The mesh with updated vertices from update_vertex_positions.
+    :param edge_mapping: A mapping of old to new edge indices, as returned by split_edges.
+    :return: The mesh with updated faces.
+    """
+    # Implementation goes here
+    return updated_mesh
+
 
 def subdivision_loop(mesh, iterations=1):
     """
@@ -7,7 +38,11 @@ def subdivision_loop(mesh, iterations=1):
     :param iterations: number of iterations
     :return: mesh after subdivision
     """
-    return mesh
+    for _ in range(iterations):
+        edge_mapping = split_edges(mesh)
+        mesh = update_vertex_positions(mesh, edge_mapping)
+        mesh = split_faces(mesh, edge_mapping)
+        return mesh
 
 def simplify_quadric_error(mesh, face_count=1):
     """
