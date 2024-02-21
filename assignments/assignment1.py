@@ -138,7 +138,6 @@ def get_boundary(vertices_he):
         is_boundary_vertex.append(flag)
     return np.array(is_boundary_vertex)
 
-
 def subdivision_loop_halfedge(mesh):
     # prepare geometry for the loop subdivision
     vertices, faces = mesh.vertices, mesh.faces # [N_vertices, 3] [N_faces, 3]
@@ -271,7 +270,6 @@ def subdivision_loop_halfedge(mesh):
     mesh.vertices = np.array(new_vertices)
     mesh.faces = np.array(temp_faces)
     return mesh
-
 
 def subdivision_loop(mesh):
     """
@@ -414,6 +412,68 @@ def subdivision_loop(mesh):
     
     return trimesh.Trimesh(new_vertices, new_faces)
 
+class Vertex:
+    def __init__(self, index, x, y, z):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.index = index
+    def set_Q(self, Q):
+        self.Q = Q
+    def set_pos(self,pos):
+        self.x, self.y, self.z = pos
+    @property
+    def pos(self):
+        return np.array([self.x,self.y,self.z]) 
+    def __str__(self):
+        return f"Vertex {self.index}: ({self.x}, {self.y}, {self.z})"
+    def __repr__(self):
+        return str(self)
+    def __eq__(self, other):
+        if isinstance(other, Vertex):
+            return self.index == other.index
+        return False
+
+class Edge:
+    def __init__(self, index, v1, v2):
+        self.v1 = v1
+        self.v2 = v2
+        self.index = index
+    def set_Q(self, Q):
+        self.Q = Q
+    def update_Q(self):
+        self.Q = self.v1.Q + self.v2.Q
+        self.v_optimal = compute_optimal_vertex(self.Q)
+        self.error = np.dot(self.v_optimal, np.dot(self.Q, self.v_optimal))
+
+    def __str__(self):
+        return f"Edge {self.index}: ({self.v1.index}, {self.v2.index})"
+    def __repr__(self):
+        return str(self)
+    
+class Face:
+    def __init__(self, index, v1, v2, v3):
+        self.v1 = v1
+        self.v2 = v2
+        self.v3 = v3
+        self.index = index
+    def set_Q(self, Q):
+        self.Q = Q
+    def update_vertex_Q(self):
+        self.v1.set_Q(self.v1.Q + self.Q)
+        self.v2.set_Q(self.v2.Q + self.Q)
+        self.v3.set_Q(self.v3.Q + self.Q)
+    @property
+    def vertices(self):
+        return [self.v1, self.v2, self.v3]
+    @property
+    def vertices_index(self):
+        return [self.v1.index, self.v2.index, self.v3.index]   
+    
+    def __str__(self):
+        return f"Face {self.index}: ({self.v1.index}, {self.v2.index}, {self.v3.index})"
+    def __repr__(self):
+        return str(self) 
 
 def compute_plane_equation(v1, v2, v3):
     normal = np.cross(v2 - v1, v3 - v1)
@@ -421,18 +481,15 @@ def compute_plane_equation(v1, v2, v3):
     d = -np.dot(normal, v1)
     return np.append(normal, d)
 
-def compute_error_quadric(vertices, faces):
-    Q_matrices = [np.zeros((4, 4)) for _ in range(len(vertices))]
-    
-    for face in faces:
-        v1, v2, v3 = vertices[face[0]], vertices[face[1]], vertices[face[2]]
-        plane_eq = compute_plane_equation(v1, v2, v3)
-        Q_face = np.outer(plane_eq, plane_eq)
+def init_error_quadric(vertices, faces):
+    for vertex in vertices.values():
+        vertex.set_Q(np.zeros((4, 4)))
+    for face in faces.values():
 
-        for vertex_index in face:
-            Q_matrices[vertex_index] += Q_face
-    
-    return Q_matrices
+        plane_eq = compute_plane_equation(face.v1.pos, face.v2.pos, face.v3.pos)
+        Q_face = np.outer(plane_eq, plane_eq)
+        face.set_Q(Q_face)
+        face.update_vertex_Q()
 
 def compute_optimal_vertex(Q):
     Q_reduced = Q[:-1, :-1]
@@ -440,10 +497,22 @@ def compute_optimal_vertex(Q):
     v = np.append(v, 1)
     return v
 
+def build_edges(vertices, faces):
+    edges = {}
+    for face in faces.values():
+        face_sort = sorted([face.v1.index, face.v2.index, face.v3.index])
+        for i,j in [(0,1),(1,2),(0,2)]:
+            edge_index = (face_sort[i], face_sort[j])
+            if edge_index not in edges:
+                edge = Edge(edge_index,vertices[edge_index[0]], vertices[edge_index[1]])
+                edge.update_Q() 
+                edges[edge_index] = edge
+    return edges
+
 def evaluate_edge_collapse_errors(faces, quadric_matrices):
     edge_errors = {}
 
-    for face in faces:
+    for face in faces.values():
         for i in range(3):
             v1_index = face[i]
             v2_index = face[(i + 1) % 3]
@@ -457,39 +526,51 @@ def evaluate_edge_collapse_errors(faces, quadric_matrices):
 
     return edge_errors
 
+def get_neighbor_vertices(base_vertices, edges):
+    neighbor_vertices = []
+    for vertex in base_vertices:
+        for (v1_i,v2_i), edge in edges.values():
+            if v1_i == vertex.index and edge.v2 not in neighbor_vertices:
+                neighbor_vertices.append(edge.v2)
+            if v2_i == vertex.index and edge.v1 not in neighbor_vertices:
+                neighbor_vertices.append(edge.v1)
+    return neighbor_vertices
+
 
 def simplify_quadric_error(mesh, face_count=1):
-    Q_matrices = compute_error_quadric(mesh.vertices, mesh.faces)
+    vertices = {i:Vertex(i, mesh.vertices[i][0], mesh.vertices[i][1], mesh.vertices[i][2]) for i in range(mesh.vertices.shape[0])}
+    faces = {i:Face(i, vertices[mesh.faces[i][0]], vertices[mesh.faces[i][1]], vertices[mesh.faces[i][2]]) for i in range(mesh.faces.shape[0])}
+    init_error_quadric(vertices, faces)
     start_time = time.time()
     iteration = 0
-    while len(mesh.faces) > face_count:
-        edge_errors = evaluate_edge_collapse_errors(mesh.faces, Q_matrices)
-        if not edge_errors:
-            break
-        edge_to_collapse, (min_error, optimal_vertex) = min(edge_errors.items(), key=lambda item: item[1][0])
-        v1, v2 = edge_to_collapse
-        mesh.vertices[v1] = optimal_vertex[:3]
-        faces_to_remove = []
-        vertices_to_update = set()
-        for face_index, face in enumerate(mesh.faces):
-            if v1 in face or v2 in face:
-                vertices_to_update.update(face)
-                if v1 in face and v2 in face:
-                    faces_to_remove.append(face_index)
-        vertices_to_update.discard(v1)
-        vertices_to_update.discard(v2)
-        faces = [face for i, face in enumerate(mesh.faces) if i not in faces_to_remove]
-        for face in faces:
-            face[:] = [v1 if vertex == v2 else vertex for vertex in face]
-        for vertex_index in vertices_to_update:
-            Q_matrices[vertex_index] += Q_matrices[v2]
-        Q_matrices[v2] = np.zeros((4, 4))
-        mesh.faces = faces
+    while len(faces) > face_count:
+        edges = build_edges(vertices, faces)
+        edge_to_collapse = min(edges.values(), key=lambda edge: edge.error)
+        # update v1
+        edge_to_collapse.v1.set_pos(edge_to_collapse.v_optimal[:3])
+        edge_to_collapse.v1.set_Q(edge_to_collapse.v1.Q + edge_to_collapse.v2.Q)
+        
+        # update topology
+        for face in list(faces.values()):  # Convert to list to avoid runtime error due to modification
+            is_v1_in = edge_to_collapse.v1 in face.vertices
+            is_v2_in = edge_to_collapse.v2 in face.vertices
+
+            if is_v1_in and is_v2_in:
+                del faces[face.index]
+            elif not is_v1_in and is_v2_in:
+                if face.v1 == edge_to_collapse.v2:
+                    face.v1 = edge_to_collapse.v1
+                elif face.v2 == edge_to_collapse.v2:
+                    face.v2 = edge_to_collapse.v1
+                elif face.v3 == edge_to_collapse.v2:
+                    face.v3 = edge_to_collapse.v1
         iteration += 1
         if iteration % 10 == 0:
             elapsed_time = time.time() - start_time
-            print(f"\rIteration {iteration}: {len(mesh.faces)} faces remaining, elapsed time: {elapsed_time:.2f} seconds", end='', flush=True)
+            print(f"\rIteration {iteration}: {len(faces)} faces remaining, elapsed time: {elapsed_time:.2f} seconds", end='', flush=True)
     print('\n')
+    mesh.vertices = np.array([vertex.pos for vertex in vertices.values()])
+    mesh.faces = np.array([face.vertices_index for face in faces.values()])
     return mesh
 
 
@@ -497,7 +578,7 @@ if __name__ == '__main__':
     # Load mesh and print information
     mesh = trimesh.load_mesh('assets/bunny.obj')
     # mesh = trimesh.creation.box(extents=[1, 1, 1])
-    # print(f'Mesh Info: {mesh}')
+    print(f'Mesh Info: {mesh}')
     
     # apply loop subdivision over the loaded mesh
     # mesh_subdivided = mesh.subdivide_loop(iterations=1)
@@ -510,13 +591,11 @@ if __name__ == '__main__':
     # mesh_subdivided.export('assets/assignment1/cube_subdivided.obj')
     
     # # quadratic error mesh decimation
-    mesh_decimated = mesh.simplify_quadric_decimation(6)
-    print("vertices:", mesh_decimated.vertices)
-    print("faces:", mesh_decimated.faces)
+    # mesh_decimated = mesh.simplify_quadric_decimation(6)
+    # print("vertices:", mesh_decimated.vertices)
+    # print("faces:", mesh_decimated.faces)
     # # TODO: implement your own quadratic error mesh decimation here
-    mesh_decimated = simplify_quadric_error(mesh, face_count=500)
-    print("vertices:", mesh_decimated.vertices)
-    print("faces:", mesh_decimated.faces)
+    mesh_decimated = simplify_quadric_error(mesh, face_count=4500)
     # # print the new mesh information and save the mesh
     # print(f'Decimated Mesh Info: {mesh_decimated}')
-    mesh_decimated.export('assets/assignment1/bunny_decimated_6.obj')
+    mesh_decimated.export('assets/assignment1/bunny_decimated_500.obj')
