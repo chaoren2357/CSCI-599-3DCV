@@ -85,7 +85,7 @@ function initScene2() {
 
     let loader2 = new OBJLoader();
     loader2.load(
-        '../assets/assignment1/bunny_decimated.obj',
+        '../assets/assignment1/bunny_decimated_500.obj',
         function(object) {
             cube2 = object.children[0];
             cube2.material = new THREE.MeshPhongMaterial({ color: 0x999999 });

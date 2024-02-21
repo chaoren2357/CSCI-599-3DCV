@@ -477,7 +477,7 @@ class Face:
 
 def compute_plane_equation(v1, v2, v3):
     normal = np.cross(v2 - v1, v3 - v1)
-    # normal = normal / np.linalg.norm(normal)
+    normal = normal / np.linalg.norm(normal)
     d = -np.dot(normal, v1)
     return np.append(normal, d)
 
@@ -485,7 +485,6 @@ def init_error_quadric(vertices, faces):
     for vertex in vertices.values():
         vertex.set_Q(np.zeros((4, 4)))
     for face in faces.values():
-
         plane_eq = compute_plane_equation(face.v1.pos, face.v2.pos, face.v3.pos)
         Q_face = np.outer(plane_eq, plane_eq)
         face.set_Q(Q_face)
@@ -509,22 +508,40 @@ def build_edges(vertices, faces):
                 edges[edge_index] = edge
     return edges
 
-def evaluate_edge_collapse_errors(faces, quadric_matrices):
-    edge_errors = {}
+def update_edges(edges, edge_to_collapse):
+    for (v1_index, v2_index), edge in list(edges.items()):
+        if v1_index == edge_to_collapse.v2.index:
+            new_key = (edge_to_collapse.v1.index, v2_index)
+            if new_key[0] != new_key[1]:
+                edge.v1 = edge_to_collapse.v1
+                edge.index = new_key
+                edge.update_Q()
+                edges[new_key] = edge
+            del edges[(v1_index, v2_index)]
+        elif v2_index == edge_to_collapse.v2.index:
+            new_key = (v1_index, edge_to_collapse.v1.index)
+            if new_key[0] != new_key[1]:
+                edge.v2 = edge_to_collapse.v1
+                edge.index = new_key
+                edge.update_Q()
+                edges[new_key] = edge
+            del edges[(v1_index, v2_index)]
 
-    for face in faces.values():
-        for i in range(3):
-            v1_index = face[i]
-            v2_index = face[(i + 1) % 3]
-            edge = (min(v1_index, v2_index), max(v1_index, v2_index))
+def update_faces(faces, edge_to_collapse):
+    for face_index, face in list(faces.items()):  
+        is_v1_in = edge_to_collapse.v1 in face.vertices
+        is_v2_in = edge_to_collapse.v2 in face.vertices
 
-            if edge not in edge_errors:
-                Q = quadric_matrices[v1_index] + quadric_matrices[v2_index]
-                v_optimal = compute_optimal_vertex(Q)
-                error = np.dot(v_optimal, np.dot(Q, v_optimal))
-                edge_errors[edge] = (error, v_optimal)
+        if is_v1_in and is_v2_in:
+            del faces[face_index]
+        elif not is_v1_in and is_v2_in:
+            if face.v1 == edge_to_collapse.v2:
+                face.v1 = edge_to_collapse.v1
+            elif face.v2 == edge_to_collapse.v2:
+                face.v2 = edge_to_collapse.v1
+            elif face.v3 == edge_to_collapse.v2:
+                face.v3 = edge_to_collapse.v1
 
-    return edge_errors
 
 def get_neighbor_vertices(base_vertices, edges):
     neighbor_vertices = []
@@ -541,29 +558,18 @@ def simplify_quadric_error(mesh, face_count=1):
     vertices = {i:Vertex(i, mesh.vertices[i][0], mesh.vertices[i][1], mesh.vertices[i][2]) for i in range(mesh.vertices.shape[0])}
     faces = {i:Face(i, vertices[mesh.faces[i][0]], vertices[mesh.faces[i][1]], vertices[mesh.faces[i][2]]) for i in range(mesh.faces.shape[0])}
     init_error_quadric(vertices, faces)
+    edges = build_edges(vertices, faces)
     start_time = time.time()
     iteration = 0
     while len(faces) > face_count:
-        edges = build_edges(vertices, faces)
         edge_to_collapse = min(edges.values(), key=lambda edge: edge.error)
         # update v1
         edge_to_collapse.v1.set_pos(edge_to_collapse.v_optimal[:3])
         edge_to_collapse.v1.set_Q(edge_to_collapse.v1.Q + edge_to_collapse.v2.Q)
         
         # update topology
-        for face in list(faces.values()):  # Convert to list to avoid runtime error due to modification
-            is_v1_in = edge_to_collapse.v1 in face.vertices
-            is_v2_in = edge_to_collapse.v2 in face.vertices
-
-            if is_v1_in and is_v2_in:
-                del faces[face.index]
-            elif not is_v1_in and is_v2_in:
-                if face.v1 == edge_to_collapse.v2:
-                    face.v1 = edge_to_collapse.v1
-                elif face.v2 == edge_to_collapse.v2:
-                    face.v2 = edge_to_collapse.v1
-                elif face.v3 == edge_to_collapse.v2:
-                    face.v3 = edge_to_collapse.v1
+        update_faces(faces, edge_to_collapse)
+        update_edges(edges, edge_to_collapse)
         iteration += 1
         if iteration % 10 == 0:
             elapsed_time = time.time() - start_time
@@ -595,7 +601,7 @@ if __name__ == '__main__':
     # print("vertices:", mesh_decimated.vertices)
     # print("faces:", mesh_decimated.faces)
     # # TODO: implement your own quadratic error mesh decimation here
-    mesh_decimated = simplify_quadric_error(mesh, face_count=4500)
+    mesh_decimated = simplify_quadric_error(mesh, face_count=500)
     # # print the new mesh information and save the mesh
     # print(f'Decimated Mesh Info: {mesh_decimated}')
     mesh_decimated.export('assets/assignment1/bunny_decimated_500.obj')
