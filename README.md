@@ -29,13 +29,13 @@ Demo model:
 
 | Attributes | Trimesh | My implementation |
 |-------|-------|-------|
-| Cube for 1 iter | ![](/images/cube_subdivided_1_gt.gif) | ![](/images/cube_subdivided_1_he.gif) |
+| Cube for 1 iter | ![](images/cube_subdivided_1_gt.gif) | ![](images/cube_subdivided_1_he.gif) |
 | Time | 0.0067365s | 0.0011031s |
-| Cube for 2 iter | ![](/images/cube_subdivided_2_gt.gif) | ![](/images/cube_subdivided_2_he.gif) |
+| Cube for 2 iter | ![](images/cube_subdivided_2_gt.gif) | ![](images/cube_subdivided_2_he.gif) |
 | Time | 0.007020s | 0.011545s |
-| Cube for 3 iter | ![](/images/cube_subdivided_3_gt.gif) | ![](/images/cube_subdivided_3_he.gif) |
+| Cube for 3 iter | ![](images/cube_subdivided_3_gt.gif) | ![](images/cube_subdivided_3_he.gif) |
 | Time | 0.008119s | 0.13042s |
-| Cube for 4 iter | ![](/images/cube_subdivided_4_gt.gif) | ![](/images/cube_subdivided_4_he.gif) |
+| Cube for 4 iter | ![](images/cube_subdivided_4_gt.gif) | ![](images/cube_subdivided_4_he.gif) |
 | Time | 0.01047s | 2.045044s |
 
 
