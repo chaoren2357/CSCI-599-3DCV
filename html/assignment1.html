@@ -36,5 +36,84 @@
 		<p>You should create a similar second visualizer and display your results accordingly.</p>
         <div id="container2"></div>
 		<script type="module" src="../js/assignment1.js"></script>
+	        <!-- Inserted Markdown content starts here -->
+			<div id="markdown-content">
+				<h2>HW1</h2>
+				<p>You can run by typing <code>python assignments/assignment1.py</code></p>
+				<p>To visualize each model, you can modify resource URL in assignment1.js(e.g. '../assets/assignment1/cube_subdivided.obj') to destination URL.</p>
+				<p>After <code>if __name__ == '__main__'</code>:</p>
+				<ul>
+					<li>Uncomment <code>mesh_subdivided = subdivision_loop_halfedge(mesh)</code> and <code>mesh_subdivided.export('assets/assignment1/cube_subdivided.obj')</code> for generate mesh subdivided results.</li>
+					<li>Uncomment <code>mesh_decimated = simplify_quadric_error(mesh, face_count=500)</code> and <code>mesh_decimated.export('assets/assignment1/bunny_decimated_500.obj')</code> for generate mesh decimated results.</li>
+				</ul>
+				<p>Demo model:</p>
+				<ul>
+					<li>Cube: originally 8 vertices and 6 faces</li>
+					<li>Bunny: originally 2503 vertices and 4968 faces</li>
+					<li>Face: originally 8807 vertices and 17256 faces</li>
+				</ul>
+				<h3>Loop subdivision</h3>
+				<p>I use half edge data structure for loop subdivision. My implementation is slow due to the twin setting of half edge.</p>
+				<table>
+					<tr>
+						<th>Attributes</th>
+						<th>Trimesh</th>
+						<th>My implementation</th>
+					</tr>
+					<tr>
+						<td>Cube for 1 iter</td>
+						<td><img src="/images/cube_subdivided_1_gt.gif" alt="Cube for 1 iter - Trimesh" style="width: 200px;"><br>Time: 0.0067365s</td>
+						<td><img src="/images/cube_subdivided_1_he.gif" alt="Cube for 1 iter - My implementation" style="width: 200px;"><br>Time: 0.0011031s</td>
+					</tr>
+					<tr>
+						<td>Cube for 2 iter</td>
+						<td><img src="/images/cube_subdivided_2_gt.gif" alt="Cube for 2 iter - Trimesh" style="width: 200px;"><br>Time: 0.007020s</td>
+						<td><img src="/images/cube_subdivided_2_he.gif" alt="Cube for 2 iter - My implementation" style="width: 200px;"><br>Time: 0.011545s</td>
+					</tr>
+					<tr>
+						<td>Cube for 3 iter</td>
+						<td><img src="/images/cube_subdivided_3_gt.gif" alt="Cube for 3 iter - Trimesh" style="width: 200px;"><br>Time: 0.008119s</td>
+						<td><img src="/images/cube_subdivided_3_he.gif" alt="Cube for 3 iter - My implementation" style="width: 200px;"><br>Time: 0.13042s</td>
+					</tr>
+					<tr>
+						<td>Cube for 4 iter</td>
+						<td><img src="/images/cube_subdivided_4_gt.gif" alt="Cube for 4 iter - Trimesh" style="width: 200px;"><br>Time: 0.01047s</td>
+						<td><img src="/images/cube_subdivided_4_he.gif" alt="Cube for 4 iter - My implementation" style="width: 200px;"><br>Time: 2.045044s</td>
+					</tr>
+				</table>
+				
+				<h3>Quadratic Error based mesh decimation</h3>
+				<table>
+					<table>
+						<tr>
+							<th>Attributes</th>
+							<th>Trimesh</th>
+							<th>My implementation</th>
+						</tr>
+						<tr>
+							<td>Bunny to 2000 faces</td>
+							<td><img src="/images/bunny_decimated_2000_gt.gif" alt="Bunny to 2000 faces - Trimesh" style="width: 200px;"><br>Time: 1.25s</td>
+							<td><img src="/images/bunny_decimated_2000_mine.gif" alt="Bunny to 2000 faces - My implementation" style="width: 200px;"><br>Time: 6.4s</td>
+						</tr>
+						<tr>
+							<td>Bunny to 500 faces</td>
+							<td><img src="/images/bunny_decimated_500_gt.gif" alt="Bunny to 500 faces - Trimesh" style="width: 200px;"><br>Time: 1.30s</td>
+							<td><img src="/images/bunny_decimated_500_mine.gif" alt="Bunny to 500 faces - My implementation" style="width: 200px;"><br>Time: 6.76s</td>
+						</tr>
+						<tr>
+							<td>Face to 10000 faces</td>
+							<td><img src="/images/face_decimated_10000_gt.gif" alt="Face to 10000 faces - Trimesh" style="width: 200px;"><br>Time: 1.09s</td>
+							<td><img src="/images/face_decimated_10000_mine.gif" alt="Face to 10000 faces - My implementation" style="width: 200px;"><br>Time: 59.90s</td>
+						</tr>
+						<tr>
+							<td>Face to 2000 faces</td>
+							<td><img src="/images/face_decimated_2000_gt.gif" alt="Face to 2000 faces - Trimesh" style="width: 200px;"><br>Time: 1.13s</td>
+							<td><img src="/images/face_decimated_2000_mine.gif" alt="Face to 2000 faces - My implementation" style="width: 200px;"><br>Time: 96.66s</td>
+						</tr>
+					</table>
+					
+				</table>
+			</div>
+			<!-- Inserted Markdown content ends here -->
 	</body>
 </html>
