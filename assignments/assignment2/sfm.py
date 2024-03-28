@@ -239,6 +239,44 @@ class SFM(object):
 
             return R,t
 
+    def triangulation(self, img1pts, img2pts, R1, t1, R2, t2): 
+        """
+        Perform triangulation to estimate the 3D coordinates of points in the scene.
+
+        Args:
+            img1pts (numpy.ndarray): 2D image points in the first image.
+            img2pts (numpy.ndarray): 2D image points in the second image.
+            R1 (numpy.ndarray): Rotation matrix of the first camera.
+            t1 (numpy.ndarray): Translation vector of the first camera.
+            R2 (numpy.ndarray): Rotation matrix of the second camera.
+            t2 (numpy.ndarray): Translation vector of the second camera.
+
+        Returns:
+            numpy.ndarray: 3D coordinates of the triangulated points.
+
+        """
+        img1ptsHom = cv2.convertPointsToHomogeneous(img1pts)[:,0,:]
+        img2ptsHom = cv2.convertPointsToHomogeneous(img2pts)[:,0,:]
+
+        img1ptsNorm = (np.linalg.inv(self.K).dot(img1ptsHom.T)).T
+        img2ptsNorm = (np.linalg.inv(self.K).dot(img2ptsHom.T)).T
+
+        img1ptsNorm = cv2.convertPointsFromHomogeneous(img1ptsNorm)[:,0,:]
+        img2ptsNorm = cv2.convertPointsFromHomogeneous(img2ptsNorm)[:,0,:]
+
+        pts4d = cv2.triangulatePoints(np.hstack((R1,t1)),np.hstack((R2,t2)),
+                                        img1ptsNorm.T,img2ptsNorm.T)
+        pts3d = cv2.convertPointsFromHomogeneous(pts4d.T)[:,0,:]
+
+        return pts3d
+
+    def update_3D_reference(self, ref1, ref2, img1idx, img2idx, upp_limit, low_limit=0): 
+
+        ref1[img1idx] = np.arange(upp_limit) + low_limit
+        ref2[img2idx] = np.arange(upp_limit) + low_limit
+
+        return ref1, ref2
+
     def triangulate_two_views(self, name1, name2): 
         """
         Triangulates the 3D coordinates of matched points between two views.
@@ -251,53 +289,17 @@ class SFM(object):
             None
         """
 
-        def triangulation(img1pts, img2pts, R1, t1, R2, t2): 
-            """
-            Perform triangulation to estimate the 3D coordinates of points in the scene.
 
-            Args:
-                img1pts (numpy.ndarray): 2D image points in the first image.
-                img2pts (numpy.ndarray): 2D image points in the second image.
-                R1 (numpy.ndarray): Rotation matrix of the first camera.
-                t1 (numpy.ndarray): Translation vector of the first camera.
-                R2 (numpy.ndarray): Rotation matrix of the second camera.
-                t2 (numpy.ndarray): Translation vector of the second camera.
-
-            Returns:
-                numpy.ndarray: 3D coordinates of the triangulated points.
-
-            """
-            img1ptsHom = cv2.convertPointsToHomogeneous(img1pts)[:,0,:]
-            img2ptsHom = cv2.convertPointsToHomogeneous(img2pts)[:,0,:]
-
-            img1ptsNorm = (np.linalg.inv(self.K).dot(img1ptsHom.T)).T
-            img2ptsNorm = (np.linalg.inv(self.K).dot(img2ptsHom.T)).T
-
-            img1ptsNorm = cv2.convertPointsFromHomogeneous(img1ptsNorm)[:,0,:]
-            img2ptsNorm = cv2.convertPointsFromHomogeneous(img2ptsNorm)[:,0,:]
-
-            pts4d = cv2.triangulatePoints(np.hstack((R1,t1)),np.hstack((R2,t2)),
-                                            img1ptsNorm.T,img2ptsNorm.T)
-            pts3d = cv2.convertPointsFromHomogeneous(pts4d.T)[:,0,:]
-
-            return pts3d
-
-        def update_3D_reference(ref1, ref2, img1idx, img2idx, upp_limit, low_limit=0): 
-
-            ref1[img1idx] = np.arange(upp_limit) + low_limit
-            ref2[img2idx] = np.arange(upp_limit) + low_limit
-
-            return ref1, ref2
 
         R1, t1, ref1 = self.image_data[name1]
         R2, t2, ref2 = self.image_data[name2]
 
         _, img1pts, img2pts, img1idx, img2idx = self.matches_data[(name1,name2)]
         
-        new_point_cloud = triangulation(img1pts, img2pts, R1, t1, R2, t2)
+        new_point_cloud = self.triangulation(img1pts, img2pts, R1, t1, R2, t2)
         self.point_cloud = np.concatenate((self.point_cloud, new_point_cloud), axis=0)
 
-        ref1, ref2 = update_3D_reference(ref1, ref2, img1idx, img2idx,new_point_cloud.shape[0],
+        ref1, ref2 = self.update_3D_reference(ref1, ref2, img1idx, img2idx,new_point_cloud.shape[0],
                                         self.point_cloud.shape[0]-new_point_cloud.shape[0])
         self.image_data[name1][-1] = ref1 
         self.image_data[name2][-1] = ref2 
@@ -319,13 +321,39 @@ class SFM(object):
 
                 prev_name_ref = self.image_data[prev_name][-1]
                 matches = self.load_matches(prev_name,name)
-                matches = [match for match in matches if prev_name_ref[match.queryIdx] < 0]
+                matches = [match for match in matches if prev_name_ref[match.queryIdx] >= 0]
 
                 if len(matches) > 0: 
-                    # TODO: Process the new view
-                    pass
+                    img1pts, img2pts, img1idx, img2idx = self.get_aligned_matches(kp1, desc1, kp2, desc2, matches)
+
+                    # Filter matches based on existing 3D points
+                    valid_matches = []
+                    valid_img1pts, valid_img2pts = [], []
+                    valid_img1idx, valid_img2idx = [], []
+                    for i, match in enumerate(matches):
+                        if prev_name_ref[match.queryIdx] >= 0:
+                            valid_matches.append(match)
+                            valid_img1pts.append(img1pts[i])
+                            valid_img2pts.append(img2pts[i])
+                            valid_img1idx.append(img1idx[i])
+                            valid_img2idx.append(img2idx[i])
+
+                    if len(valid_matches) > 0:
+                        R1, t1, _ = self.image_data[prev_name]
+                        R2, t2, _ = self.image_data[name]
+                        new_point_cloud = self.triangulation(valid_img1pts, valid_img2pts, R1, t1, R2, t2)
+                        
+                        # Update point cloud and references
+                        self.point_cloud = np.concatenate((self.point_cloud, new_point_cloud), axis=0)
+                        ref1, ref2 = self.update_3D_reference(prev_name_ref, self.image_data[name][-1], 
+                                                              valid_img1idx, valid_img2idx, new_point_cloud.shape[0],
+                                                              self.point_cloud.shape[0] - new_point_cloud.shape[0])
+                        self.image_data[prev_name][-1] = ref1
+                        self.image_data[name][-1] = ref2
                 else: 
                     print('skipping {} and {}'.format(prev_name, name))
+
+
         
     def new_view_pose_estimation(self, name): 
         """
@@ -395,11 +423,12 @@ class SFM(object):
             for k in self.image_data.keys(): 
                 _, _, ref = self.image_data[k]
                 kp, desc = self.load_features(k)
+                print(f"Before {k}, {len(kp)}, {len(ref)}")
                 kp = np.array(kp)[ref>=0]
+                print(f"After {k}, {len(kp)}, {len(ref)}")
                 image_pts = np.array([_kp.pt for _kp in kp])
 
                 image = cv2.imread(os.path.join(self.images_dir, k+'.jpg'))[:,:,::-1]
-
                 colors[ref[ref>=0].astype(int)] = image[image_pts[:,1].astype(int),
                                                         image_pts[:,0].astype(int)]
             
@@ -419,16 +448,26 @@ class SFM(object):
         - err (float): The average reprojection error.
         """
 
-        # TODO: Reprojection error calculation
         R, t, ref = self.image_data[name]
         kp, desc = self.load_features(name)
-        err = 0
+
+        # Selecting 3D points and corresponding 2D points
+        pts3d = self.point_cloud[ref[ref >= 0].astype(int)]
+        pts2d = np.array([kp[idx].pt for idx in np.where(ref >= 0)[0]])
+
+        # Projecting 3D points to 2D
+        pts2d_proj, _ = cv2.projectPoints(pts3d, R, t, self.K, None)
+        pts2d_proj = pts2d_proj.squeeze()
+
+        # Calculating reprojection error
+        errors = np.linalg.norm(pts2d - pts2d_proj, axis=1)
+        err = np.mean(errors)
 
         # TODO: PLOT here
         if self.opts.plot_error: 
             fig,ax = plt.subplots()
             image = cv2.imread(os.path.join(self.images_dir, name+'.jpg'))[:,:,::-1]
-            # ax = draw_correspondences(image, img_pts, reproj_pts, ax)
+            ax = draw_correspondences(image, pts2d, pts2d_proj, ax)
             ax.set_title('reprojection error = {}'.format(err))
             fig.savefig(os.path.join(self.out_err_dir, '{}.png'.format(name)))
             plt.close(fig)

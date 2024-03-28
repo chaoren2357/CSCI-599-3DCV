@@ -91,18 +91,35 @@ def pts2ply(pts,colors,filename='out.ply'):
 
 def draw_correspondences(img, ptsTrue, ptsReproj, ax, drawOnly=50): 
     """
-    Draws correspondence between ground truth and reprojected feature point
+    Draws correspondence between ground truth and reprojected feature points
 
     Args: 
-    ptsTrue, ptsReproj: (n,2) numpy array
-    ax: matplotlib axis object
-    drawOnly: max number of random points to draw
+    img: The image on which to draw the correspondences.
+    ptsTrue: (n,2) numpy array of ground truth points.
+    ptsReproj: (n,2) numpy array of reprojected points.
+    ax: matplotlib axis object.
+    drawOnly: max number of random points to draw.
 
     Returns: 
-    ax: matplotlib axis object
+    ax: matplotlib axis object.
     """
     ax.imshow(img)
     
-    # TODO: draw correspondence between ptsTrue and ptsReproj
+    # Randomly select points to draw if there are too many
+    if len(ptsTrue) > drawOnly:
+        idxs = np.random.choice(len(ptsTrue), drawOnly, replace=False)
+        ptsTrue = ptsTrue[idxs]
+        ptsReproj = ptsReproj[idxs]
+    
+    # Draw lines between ground truth and reprojected points
+    for ptTrue, ptReproj in zip(ptsTrue, ptsReproj):
+        ax.plot([ptTrue[0], ptReproj[0]], [ptTrue[1], ptReproj[1]], color='yellow', alpha=0.5)
+        ax.scatter(ptTrue[0], ptTrue[1], color='blue', label='True Point', s=15)
+        ax.scatter(ptReproj[0], ptReproj[1], color='red', label='Reprojected Point', s=15)
+
+    # Remove duplicate labels
+    handles, labels = ax.get_legend_handles_labels()
+    unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
+    ax.legend(*zip(*unique), loc='best')
 
     return ax
