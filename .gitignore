@@ -2,3 +2,4 @@
 /assets/assignment2/Benchmarking_Camera_Calibration_2008
 *.pyc
 .DS_Store
+/assets
