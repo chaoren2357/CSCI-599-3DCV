@@ -304,7 +304,7 @@ class SFM(object):
         self.image_data[name1][-1] = ref1 
         self.image_data[name2][-1] = ref2 
 
-    def triangulate_new_view(self, name): 
+    def triangulate_new_view(self, name):
         """
         Triangulates new view based on matches with previous views.
 
@@ -314,43 +314,54 @@ class SFM(object):
         Returns:
             None
         """
-        for prev_name in self.image_data.keys(): 
-            if prev_name != name: 
+        for prev_name in self.image_data.keys():
+            if prev_name != name:
                 kp1, desc1 = self.load_features(prev_name)
-                kp2, desc2 = self.load_features(name)  
+                kp2, desc2 = self.load_features(name)
 
                 prev_name_ref = self.image_data[prev_name][-1]
                 new_name_ref = self.image_data[name][-1]
-                
-                matches = self.load_matches(prev_name,name)
+
+                matches = self.load_matches(prev_name, name)
                 matches = [match for match in matches if prev_name_ref[match.queryIdx] < 0]
                 matches_other = [match for match in matches if prev_name_ref[match.queryIdx] >= 0]
-                if len(matches) > 0: 
-                    # TODO: Process the new view
+                if len(matches) > 0:
                     # Extract matched keypoints
                     pts1 = np.float32([kp1[match.queryIdx].pt for match in matches])
                     pts2 = np.float32([kp2[match.trainIdx].pt for match in matches])
 
-                    # Get the pose  of the views
-                    R1, t1, _ = self.image_data[prev_name]
-                    R2, t2, _ = self.image_data[name]
+                    # Find the Fundamental matrix and inliers using RANSAC
+                    F, mask = cv2.findFundamentalMat(pts1, pts2, cv2.FM_RANSAC)
+                    inlier_matches = [matches[i] for i in range(len(matches)) if mask[i]]
 
-                    # Triangulate points
-                    new_point_cloud = self.triangulation(pts1, pts2, R1, t1, R2, t2)
-                    print("new_point_cloud", new_point_cloud.shape)
-                    # Update the point cloud and the reference arrays
-                    self.point_cloud = np.concatenate((self.point_cloud, new_point_cloud), axis=0)
+                    if len(inlier_matches) > 0:
+                        # Extract inlier keypoints
+                        inlier_pts1 = np.float32([kp1[match.queryIdx].pt for match in inlier_matches])
+                        inlier_pts2 = np.float32([kp2[match.trainIdx].pt for match in inlier_matches])
 
-                    for i, match in enumerate(matches):
-                        prev_name_ref[match.queryIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
-                        new_name_ref[match.trainIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
-                    for match in matches_other:
-                        new_name_ref[match.trainIdx] = prev_name_ref[match.queryIdx]
-                        
-                    self.image_data[prev_name][-1] = prev_name_ref
-                    self.image_data[name][-1] = new_name_ref
-                else: 
-                    print('skipping {} and {}'.format(prev_name, name))
+                        # Get the pose of the views
+                        R1, t1, _ = self.image_data[prev_name]
+                        R2, t2, _ = self.image_data[name]
+
+                        # Triangulate points
+                        new_point_cloud = self.triangulation(inlier_pts1, inlier_pts2, R1, t1, R2, t2)
+
+                        # Update the point cloud and the reference arrays
+                        self.point_cloud = np.concatenate((self.point_cloud, new_point_cloud), axis=0)
+
+                        for i, match in enumerate(inlier_matches):
+                            prev_name_ref[match.queryIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
+                            new_name_ref[match.trainIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
+
+                        for match in matches_other:
+                            new_name_ref[match.trainIdx] = prev_name_ref[match.queryIdx]
+
+                        self.image_data[prev_name][-1] = prev_name_ref
+                        self.image_data[name][-1] = new_name_ref
+                    else:
+                        print('No inliers found for {} and {}'.format(prev_name, name))
+                else:
+                    print('Skipping {} and {}'.format(prev_name, name))
         
     def new_view_pose_estimation(self, name): 
         """
