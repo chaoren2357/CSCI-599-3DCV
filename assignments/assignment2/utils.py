@@ -102,7 +102,19 @@ def draw_correspondences(img, ptsTrue, ptsReproj, ax, drawOnly=50):
     ax: matplotlib axis object
     """
     ax.imshow(img)
-    
-    # TODO: draw correspondence between ptsTrue and ptsReproj
+
+    # If there are more points than the drawOnly limit, randomly select drawOnly points to draw
+    if len(ptsTrue) > drawOnly:
+        indices = np.random.choice(len(ptsTrue), size=drawOnly, replace=False)
+        ptsTrue = ptsTrue[indices]
+        ptsReproj = ptsReproj[indices]
+
+    # Draw lines between ground truth and reprojected points
+    for ptTrue, ptReproj in zip(ptsTrue, ptsReproj):
+        ax.plot([ptTrue[0], ptReproj[0]], [ptTrue[1], ptReproj[1]], color='yellow', linewidth=0.5)
+
+        # Optionally, draw markers for the points
+        ax.scatter(ptTrue[0], ptTrue[1], color='red', s=10)
+        ax.scatter(ptReproj[0], ptReproj[1], color='blue', s=10)
 
     return ax

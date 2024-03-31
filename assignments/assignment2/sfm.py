@@ -304,7 +304,7 @@ class SFM(object):
         self.image_data[name1][-1] = ref1 
         self.image_data[name2][-1] = ref2 
 
-    def trangulate_new_view(self, name): 
+    def triangulate_new_view(self, name): 
         """
         Triangulates new view based on matches with previous views.
 
@@ -320,12 +320,30 @@ class SFM(object):
                 kp2, desc2 = self.load_features(name)  
 
                 prev_name_ref = self.image_data[prev_name][-1]
+                new_name_ref = self.image_data[name][-1]
                 matches = self.load_matches(prev_name,name)
                 matches = [match for match in matches if prev_name_ref[match.queryIdx] < 0]
 
                 if len(matches) > 0: 
                     # TODO: Process the new view
-                    pass
+                    # Extract matched keypoints
+                    pts1 = np.float32([kp1[m.queryIdx].pt for m in matches])
+                    pts2 = np.float32([kp2[m.trainIdx].pt for m in matches])
+
+                    # Get the pose  of the views
+                    R1, t1, _ = self.image_data[prev_name]
+                    R2, t2, _ = self.image_data[name]
+
+                    # Triangulate points
+                    new_point_cloud = self.triangulation(pts1, pts2, R1, t1, R2, t2)
+                    # Update the point cloud and the reference arrays
+                    self.point_cloud = np.concatenate((self.point_cloud, new_point_cloud), axis=0)
+                    new_ref_idx = np.arange(self.point_cloud.shape[0] - new_point_cloud.shape[0], self.point_cloud.shape[0])
+                    for i, match in enumerate(matches):
+                        prev_name_ref[match.queryIdx] = new_ref_idx[i]
+                        new_name_ref[match.trainIdx] = new_ref_idx[i]
+                    self.image_data[prev_name][-1] = prev_name_ref
+                    self.image_data[name][-1] = new_name_ref
                 else: 
                     print('skipping {} and {}'.format(prev_name, name))
         
@@ -439,7 +457,7 @@ class SFM(object):
         if self.opts.plot_error: 
             fig,ax = plt.subplots()
             image = cv2.imread(os.path.join(self.images_dir, name+'.jpg'))[:,:,::-1]
-            # ax = draw_correspondences(image, img_pts, reproj_pts, ax)
+            ax = draw_correspondences(image, pts2d, pts2d_proj, ax)
             ax.set_title('reprojection error = {}'.format(err))
             fig.savefig(os.path.join(self.out_err_dir, '{}.png'.format(name)))
             plt.close(fig)
@@ -501,7 +519,7 @@ class SFM(object):
             print('Camera {0}: Pose Estimation [time={1:.3}s]'.format(new_name, this_time))
 
             #triangulation for new registered camera
-            self.trangulate_new_view(new_name)
+            self.triangulate_new_view(new_name)
             t1 = time()
             this_time = t1-t2
             total_time += this_time
