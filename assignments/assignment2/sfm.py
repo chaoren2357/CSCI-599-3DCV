@@ -270,12 +270,7 @@ class SFM(object):
 
         return pts3d
 
-    def update_3D_reference(self, ref1, ref2, img1idx, img2idx, upp_limit, low_limit=0): 
-
-        ref1[img1idx] = np.arange(upp_limit) + low_limit
-        ref2[img2idx] = np.arange(upp_limit) + low_limit
-
-        return ref1, ref2
+    
     
     def triangulate_two_views(self, name1, name2): 
         """
@@ -289,7 +284,12 @@ class SFM(object):
             None
         """
 
-        
+        def update_3D_reference(ref1, ref2, img1idx, img2idx, upp_limit, low_limit=0): 
+
+            ref1[img1idx] = np.arange(upp_limit) + low_limit
+            ref2[img2idx] = np.arange(upp_limit) + low_limit
+
+            return ref1, ref2
 
         R1, t1, ref1 = self.image_data[name1]
         R2, t2, ref2 = self.image_data[name2]
@@ -299,7 +299,7 @@ class SFM(object):
         new_point_cloud = self.triangulation(img1pts, img2pts, R1, t1, R2, t2)
         self.point_cloud = np.concatenate((self.point_cloud, new_point_cloud), axis=0)
 
-        ref1, ref2 = self.update_3D_reference(ref1, ref2, img1idx, img2idx,new_point_cloud.shape[0],
+        ref1, ref2 = update_3D_reference(ref1, ref2, img1idx, img2idx,new_point_cloud.shape[0],
                                         self.point_cloud.shape[0]-new_point_cloud.shape[0])
         self.image_data[name1][-1] = ref1 
         self.image_data[name2][-1] = ref2 
@@ -321,14 +321,15 @@ class SFM(object):
 
                 prev_name_ref = self.image_data[prev_name][-1]
                 new_name_ref = self.image_data[name][-1]
+                
                 matches = self.load_matches(prev_name,name)
                 matches = [match for match in matches if prev_name_ref[match.queryIdx] < 0]
-
+                matches_other = [match for match in matches if prev_name_ref[match.queryIdx] >= 0]
                 if len(matches) > 0: 
                     # TODO: Process the new view
                     # Extract matched keypoints
-                    pts1 = np.float32([kp1[m.queryIdx].pt for m in matches])
-                    pts2 = np.float32([kp2[m.trainIdx].pt for m in matches])
+                    pts1 = np.float32([kp1[match.queryIdx].pt for match in matches])
+                    pts2 = np.float32([kp2[match.trainIdx].pt for match in matches])
 
                     # Get the pose  of the views
                     R1, t1, _ = self.image_data[prev_name]
@@ -336,12 +337,16 @@ class SFM(object):
 
                     # Triangulate points
                     new_point_cloud = self.triangulation(pts1, pts2, R1, t1, R2, t2)
+                    print("new_point_cloud", new_point_cloud.shape)
                     # Update the point cloud and the reference arrays
                     self.point_cloud = np.concatenate((self.point_cloud, new_point_cloud), axis=0)
-                    new_ref_idx = np.arange(self.point_cloud.shape[0] - new_point_cloud.shape[0], self.point_cloud.shape[0])
+
                     for i, match in enumerate(matches):
-                        prev_name_ref[match.queryIdx] = new_ref_idx[i]
-                        new_name_ref[match.trainIdx] = new_ref_idx[i]
+                        prev_name_ref[match.queryIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
+                        new_name_ref[match.trainIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
+                    for match in matches_other:
+                        new_name_ref[match.trainIdx] = prev_name_ref[match.queryIdx]
+                        
                     self.image_data[prev_name][-1] = prev_name_ref
                     self.image_data[name][-1] = new_name_ref
                 else: 
