@@ -55,7 +55,7 @@ def set_arguments(parser):
                         dest='pnp_method',help='[SOLVEPNP_DLS|SOLVEPNP_EPNP|..] method used for PnP estimation, see OpenCV doc for more options (default: SOLVEPNP_DLS')
     parser.add_argument('--pnp_prob',action='store',type=float,default=.99,dest='pnp_prob',
                         help='confidence in PnP estimation required (default: 0.99)')
-    parser.add_argument('--reprojection_thres',action='store',type=float,default=1.,
+    parser.add_argument('--reprojection_thres',action='store',type=float,default=8.,
                         dest='reprojection_thres',help='reprojection threshold in PnP estimation (default: 8.)')
 
     #misc
@@ -346,7 +346,6 @@ class SFM(object):
 
                 matches = self.load_matches(prev_name, name)
                 matches = [match for match in matches if prev_name_ref[match.queryIdx] < 0]
-                # matches_other = [match for match in matches if prev_name_ref[match.queryIdx] >= 0]
                 if len(matches) > 0:
                     
                     # Extract matched keypoints
@@ -375,9 +374,6 @@ class SFM(object):
                     for i, match in enumerate(matches):
                         prev_name_ref[match.queryIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
                         new_name_ref[match.trainIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
-
-                    # for match in matches_other:
-                    #     new_name_ref[match.trainIdx] = prev_name_ref[match.queryIdx]
 
                     self.image_data[prev_name][-1] = prev_name_ref
                     self.image_data[name][-1] = new_name_ref
@@ -500,6 +496,23 @@ class SFM(object):
             
         return err
 
+    def save_camera_poses(self, filename):
+        """
+        Saves the camera poses to a file.
+
+        Args:
+            filename (str): The name of the file to save the camera poses to.
+
+        Returns:
+            None
+        """
+        with open(filename, 'w') as f:
+            for name in self.image_data.keys():
+                R, t, _ = self.image_data[name]
+                f.write('{}\n'.format(name))
+                f.write('{}\n'.format(' '.join(str(x) for x in R.flatten())))
+                f.write('{}\n'.format(' '.join(str(x) for x in t.flatten())))
+
     def run(self):
         """
         Runs the structure from motion algorithm.
@@ -575,8 +588,9 @@ class SFM(object):
             errors.append(new_err)
             print('Camera {}: Reprojection Error = {}'.format(new_name, new_err))
             
-
+        plot_errors(errors, os.path.join("./images" ,f'{self.opts.dataset}_errors.png'))
         mean_error = sum(errors) / float(len(errors))
+        self.save_camera_poses(os.path.join(self.opts.out_dir, self.opts.dataset,f'camera_poses.txt'))
         print('Reconstruction Completed: Mean Reprojection Error = {2} [t={0:.6}s], Results stored in {1}'.format(total_time, self.opts.out_dir, mean_error))
         
 

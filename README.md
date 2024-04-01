@@ -135,3 +135,34 @@ The following files are used:
 * up to 10 pts: Any extra efforts you build on top of basic SFM.
 
 For all extra credit, be sure to demonstrate in your write up cases where your extra credit.
+
+### My Result
+You can run by typing `python assignments/assignment2/assignment2.py` or seperately `python assignments/assignment2/feat_match.py` for feature matching and `python assignments/assignment2/sfm.py` for whole structure from motion pipeline.
+
+For base credits, I implement the structure-from-motion algorithm with the start code, fill all TODOs in the code.
+
+Here are the comparison of my result and the colmap result 
+| Dataset | Projection Errors for each image | Point cloud result | Camera result | COLMAP result |
+|---------|----------------------------------|-------------------------------|---------------|---------------|
+| castle-P19 | ![](images/castle-P19_errors.png) | ![](images/castle-P19_sfm.gif) |  ![](images/castle-P19_cam.gif) | ![](images/castle-P19_colmap.gif) |
+| castle-P30 | ![](images/castle-P30_errors.png) | ![](images/castle-P30_sfm.gif) | ![](images/castle-P30_cam.gif) | ![](images/castle-P30_colmap.gif) |
+| entry-P10 | ![](images/entry-P10_errors.png) | ![](images/entry-P10_sfm.gif) | ![](images/entry-P10_cam.gif) | ![](images/entry-P10_colmap.gif) |
+| fountain-P11 | ![](images/fountain-P11_errors.png) | ![](images/fountain-P11_sfm.gif) | ![](images/fountain-P11_cam.gif) | ![](images/fountain-P11_colmap.gif) |
+| Herz-Jesus-P8 | ![](images/Herz-Jesus-P8_errors.png) | ![](images/Herz-Jesus-P8_sfm.gif) | ![](images/Herz-Jesus-P8_cam.gif) | ![](images/Herz-Jesus-P8_colmap.gif) |
+| Herz-Jesus-P25 | ![](images/Herz-Jesus-P25_errors.png) | ![](images/Herz-Jesus-P25_sfm.gif) | ![](images/Herz-Jesus-P25_cam.gif) | ![](images/Herz-Jesus-P25_colmap.gif) |
+
+
+
+#### Loop subdivision
+- I use half edge data structure for loop subdivision. My implementation is slow due to the twin setting of half edge.
+
+| Attributes | Trimesh | My implementation |
+|-------|-------|-------|
+| Cube for 1 iter | ![](images/cube_subdivided_1_gt.gif) | ![](images/cube_subdivided_1_he.gif) |
+| Time | 0.0067365s | 0.0011031s |
+| Cube for 2 iter | ![](images/cube_subdivided_2_gt.gif) | ![](images/cube_subdivided_2_he.gif) |
+| Time | 0.007020s | 0.011545s |
+| Cube for 3 iter | ![](images/cube_subdivided_3_gt.gif) | ![](images/cube_subdivided_3_he.gif) |
+| Time | 0.008119s | 0.13042s |
+| Cube for 4 iter | ![](images/cube_subdivided_4_gt.gif) | ![](images/cube_subdivided_4_he.gif) |
+| Time | 0.01047s | 2.045044s |

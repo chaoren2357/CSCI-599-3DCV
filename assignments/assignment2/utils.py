@@ -1,6 +1,8 @@
 import numpy as np 
 import cv2 
 import pdb
+from matplotlib import pyplot as plt
+
 
 def serialize_keypoints(kp): 
     """Serialize list of keypoint objects so it can be saved using pickle
@@ -118,3 +120,20 @@ def draw_correspondences(img, ptsTrue, ptsReproj, ax, drawOnly=50):
         ax.scatter(ptReproj[0], ptReproj[1], color='blue', s=10)
 
     return ax
+
+def plot_errors(errors, save_path=None):
+    """
+    Plots the reprojection errors
+
+    Args:
+    errors: (n,) numpy array
+
+    Returns:
+    None
+    """
+    plt.bar(range(1, len(errors)+1), errors)
+    plt.xlabel('Image Index')
+    plt.ylabel('Reprojection Error')
+    plt.title('Reprojection Error for Each Image')
+    if save_path:
+        plt.savefig(save_path)
