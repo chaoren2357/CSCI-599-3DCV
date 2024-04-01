@@ -60,7 +60,7 @@ def set_arguments(parser):
 
     #misc
     parser.add_argument('--plot_error',action='store',type=bool,default=False,dest='plot_error')
-
+    parser.add_argument('--bundle_adjustment',action='store',type=bool,default=False,dest='bundle_adjustment')
 
 def post_process_args(opts): 
     """
@@ -362,8 +362,10 @@ class SFM(object):
                     errors1, _ = self.get_reprojection_errors(pts1, R1, t1, new_point_cloud)
                     errors2, _ = self.get_reprojection_errors(pts2, R2, t2, new_point_cloud)
                     reprojection_errors = np.mean([errors1, errors2], axis=0)
-                    valid_indices = [i for i, error in enumerate(reprojection_errors) if error < self.opts.reprojection_thres]
-
+                    error_thresh = self.opts.reprojection_thres
+                    valid_indices = [i for i, error in enumerate(reprojection_errors) if error < error_thresh]
+                    if len(valid_indices) == 0:
+                        continue
                     # Filter new_point_cloud and matches based on reprojection errors
                     new_point_cloud = new_point_cloud[valid_indices]
                     matches = [matches[i] for i in valid_indices]
@@ -513,6 +515,135 @@ class SFM(object):
                 f.write('{}\n'.format(' '.join(str(x) for x in R.flatten())))
                 f.write('{}\n'.format(' '.join(str(x) for x in t.flatten())))
 
+    def bundle_adjustment(self):
+        """
+        Perform bundle adjustment to refine camera parameters and 3D points for all processed views.
+        """
+        # Prepare parameters for bundle adjustment
+        camera_params = np.array([self.rt_to_params(self.image_data[prev_name][0], self.image_data[prev_name][1]) for prev_name in self.processed_image_names])
+        points_3d = self.point_cloud
+        points_2d = []
+        camera_indices = []
+        point_indices = []
+        for i, prev_name in enumerate(self.processed_image_names):
+            kp, _ = self.load_features(prev_name)
+            ref = self.image_data[prev_name][-1]
+            valid_indices = np.where(ref >= 0)[0]
+            points_2d.extend([kp[idx].pt for idx in valid_indices])
+            camera_indices.extend([i] * len(valid_indices))
+            point_indices.extend(ref[valid_indices].astype(int))
+        points_2d = np.array(points_2d)
+        camera_indices = np.array(camera_indices)
+        point_indices = np.array(point_indices)
+
+        # Perform bundle adjustment
+        camera_params, points_3d = self.perform_bundle_adjustment(
+            camera_params=camera_params,
+            points_3d=points_3d,
+            points_2d=points_2d,
+            camera_indices=camera_indices,
+            point_indices=point_indices
+        )
+
+        # Update camera parameters and 3D points
+        for i, prev_name in enumerate(self.processed_image_names):
+            R, t = self.params_to_rt(camera_params[i])
+            self.image_data[prev_name][:2] = [R, t]
+        self.point_cloud = points_3d
+
+    def perform_bundle_adjustment(self, camera_params, points_3d, points_2d, camera_indices, point_indices):
+        """
+        Perform bundle adjustment to refine camera parameters and 3D points.
+
+        Args:
+            camera_params (numpy.ndarray): Initial camera parameters (rotation and translation).
+            points_3d (numpy.ndarray): Initial 3D points.
+            points_2d (numpy.ndarray): Corresponding 2D points in the images.
+            camera_indices (numpy.ndarray): Indices of the camera for each 2D point.
+            point_indices (numpy.ndarray): Indices of the 3D point for each 2D point.
+
+        Returns:
+            numpy.ndarray: Refined camera parameters.
+            numpy.ndarray: Refined 3D points.
+        """
+        num_cameras = camera_params.shape[0]
+        num_points = points_3d.shape[0]
+
+        def fun(params, n_cameras, n_points, camera_indices, point_indices, points_2d):
+            """Compute residuals for bundle adjustment."""
+            camera_params = params[:n_cameras * 6].reshape((n_cameras, 6))
+            points_3d = params[n_cameras * 6:].reshape((n_points, 3))
+            residuals = np.empty(points_2d.shape[0] * 2)
+
+            for i, (cam_idx, point_idx) in enumerate(zip(camera_indices, point_indices)):
+                R, t = self.params_to_rt(camera_params[cam_idx])
+                projected = self.project(points_3d[point_idx], R, t)
+                residuals[i * 2:i * 2 + 2] = points_2d[i] - projected
+
+            return residuals
+
+        # Initial parameters: camera parameters followed by 3D points
+        x0 = np.hstack((camera_params.ravel(), points_3d.ravel()))
+
+        # Optimize
+        res = least_squares(fun, x0, args=(num_cameras, num_points, camera_indices, point_indices, points_2d),
+                            verbose=2, x_scale='jac', ftol=1e-4, method='trf')
+
+        # Extract refined parameters
+        refined_camera_params = res.x[:num_cameras * 6].reshape((num_cameras, 6))
+        refined_points_3d = res.x[num_cameras * 6:].reshape((num_points, 3))
+
+        return refined_camera_params, refined_points_3d
+    
+    def rt_to_params(self, R, t):
+        """
+        Convert rotation matrix and translation vector to parameter vector.
+
+        Args:
+            R (numpy.ndarray): Rotation matrix.
+            t (numpy.ndarray): Translation vector.
+
+        Returns:
+            numpy.ndarray: Parameter vector.
+        """
+        rvec, _ = cv2.Rodrigues(R)
+        return np.hstack((rvec.flatten(), t.flatten()))
+
+    def params_to_rt(self, params):
+        """
+        Convert parameter vector to rotation matrix and translation vector.
+
+        Args:
+            params (numpy.ndarray): Parameter vector.
+
+        Returns:
+            tuple: Rotation matrix and translation vector.
+        """
+        rvec = params[:3]
+        t = params[3:]
+        R, _ = cv2.Rodrigues(rvec)
+        return R, t.reshape(3, 1)    
+
+    def project(self, point_3d, R, t):
+        """
+        Project a 3D point to 2D using the camera parameters.
+
+        Args:
+            point_3d (numpy.ndarray): The 3D point.
+            R (numpy.ndarray): Rotation matrix.
+            t (numpy.ndarray): Translation vector.
+
+        Returns:
+            numpy.ndarray: The projected 2D point.
+        """
+        point_3d_hom = np.hstack((point_3d, [1]))  # Create a homogeneous coordinate
+        t_flat = t.flatten()  # Flatten t to shape (3,)
+        point_2d_hom = self.K.dot(R.dot(point_3d_hom[:3]) + t_flat)  # Project the point
+        point_2d = point_2d_hom[:2] / point_2d_hom[2]  # Normalize and return the 2D point
+        return point_2d.reshape(-1)  # Ensure the return value is a flat array
+
+
+
     def run(self):
         """
         Runs the structure from motion algorithm.
@@ -549,7 +680,7 @@ class SFM(object):
         views_done = 2 
         self.processed_image_names.append(name1)
         self.processed_image_names.append(name2)
-
+        
         #3d point cloud generation and reprojection error evaluation
         self.generate_ply(os.path.join(self.out_cloud_dir, 'cloud_{}_view.ply'.format(views_done)))
 
@@ -578,15 +709,20 @@ class SFM(object):
             total_time += this_time
             print('Camera {0}: Triangulation [time={1:.3}s]'.format(new_name, this_time))
             self.processed_image_names.append(new_name)
-            # self.bundle_adjustment()
-
+            
+            if self.opts.bundle_adjustment:
+                self.bundle_adjustment()
+            print("Point cloud shape: ", self.point_cloud.shape)
             #3d point cloud update and error for new camera
             views_done += 1 
-            self.generate_ply(os.path.join(self.out_cloud_dir, 'cloud_{}_view.ply'.format(views_done)))
-
-            new_err = self.compute_reprojection_error(new_name)
-            errors.append(new_err)
-            print('Camera {}: Reprojection Error = {}'.format(new_name, new_err))
+            try:
+                self.generate_ply(os.path.join(self.out_cloud_dir, 'cloud_{}_view.ply'.format(views_done)))
+                new_err = self.compute_reprojection_error(new_name)
+                errors.append(new_err)
+                print('Camera {}: Reprojection Error = {}'.format(new_name, new_err))
+            except:
+                errors.append(-1)
+            
             
         plot_errors(errors, os.path.join("./images" ,f'{self.opts.dataset}_errors.png'))
         mean_error = sum(errors) / float(len(errors))
