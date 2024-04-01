@@ -1,5 +1,7 @@
 
 /assets/assignment2/Benchmarking_Camera_Calibration_2008
+/assets/assignment2/results
 *.pyc
 .DS_Store
-/assets
+/assets/assignment1
+
