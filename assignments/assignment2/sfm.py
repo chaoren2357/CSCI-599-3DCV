@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 
 from utils import * 
 import pdb 
+from scipy.optimize import least_squares
 
 
 def set_arguments(parser): 
@@ -54,7 +55,7 @@ def set_arguments(parser):
                         dest='pnp_method',help='[SOLVEPNP_DLS|SOLVEPNP_EPNP|..] method used for PnP estimation, see OpenCV doc for more options (default: SOLVEPNP_DLS')
     parser.add_argument('--pnp_prob',action='store',type=float,default=.99,dest='pnp_prob',
                         help='confidence in PnP estimation required (default: 0.99)')
-    parser.add_argument('--reprojection_thres',action='store',type=float,default=8.,
+    parser.add_argument('--reprojection_thres',action='store',type=float,default=1.,
                         dest='reprojection_thres',help='reprojection threshold in PnP estimation (default: 8.)')
 
     #misc
@@ -130,6 +131,7 @@ class SFM(object):
 
         self.image_names = [x.split('.')[0] for x in sorted(os.listdir(self.images_dir)) \
                             if x.split('.')[-1] in opts.ext]
+        self.processed_image_names = []
 
         #setting up shared parameters for the pipeline
         self.image_data, self.matches_data, errors = {}, {}, {}
@@ -269,8 +271,6 @@ class SFM(object):
         pts3d = cv2.convertPointsFromHomogeneous(pts4d.T)[:,0,:]
 
         return pts3d
-
-    
     
     def triangulate_two_views(self, name1, name2): 
         """
@@ -304,6 +304,28 @@ class SFM(object):
         self.image_data[name1][-1] = ref1 
         self.image_data[name2][-1] = ref2 
 
+    def get_reprojection_errors(self, pts, R, t, points_3d):
+        """
+        Calculates reprojection errors for each 3D point in a single view.
+
+        Args:
+            pts (numpy.ndarray): 2D points in the image.
+            R (numpy.ndarray): Rotation matrix of the view.
+            t (numpy.ndarray): Translation vector of the view.
+            points_3d (numpy.ndarray): Corresponding 3D points.
+
+        Returns:
+            numpy.ndarray: Reprojection errors for each 3D point.
+        """
+        # Project 3D points to 2D
+        pts_proj, _ = cv2.projectPoints(points_3d, R, t, self.K, None)
+        pts_proj = pts_proj.squeeze()
+
+        # Calculate reprojection errors
+        errors = np.linalg.norm(pts - pts_proj, axis=1)
+
+        return errors, pts_proj
+
     def triangulate_new_view(self, name):
         """
         Triangulates new view based on matches with previous views.
@@ -324,42 +346,42 @@ class SFM(object):
 
                 matches = self.load_matches(prev_name, name)
                 matches = [match for match in matches if prev_name_ref[match.queryIdx] < 0]
-                matches_other = [match for match in matches if prev_name_ref[match.queryIdx] >= 0]
+                # matches_other = [match for match in matches if prev_name_ref[match.queryIdx] >= 0]
                 if len(matches) > 0:
+                    
                     # Extract matched keypoints
                     pts1 = np.float32([kp1[match.queryIdx].pt for match in matches])
                     pts2 = np.float32([kp2[match.trainIdx].pt for match in matches])
 
-                    # Find the Fundamental matrix and inliers using RANSAC
-                    F, mask = cv2.findFundamentalMat(pts1, pts2, cv2.FM_RANSAC)
-                    inlier_matches = [matches[i] for i in range(len(matches)) if mask[i]]
+                    # Get the pose of the views
+                    R1, t1, _ = self.image_data[prev_name]
+                    R2, t2, _ = self.image_data[name]
 
-                    if len(inlier_matches) > 0:
-                        # Extract inlier keypoints
-                        inlier_pts1 = np.float32([kp1[match.queryIdx].pt for match in inlier_matches])
-                        inlier_pts2 = np.float32([kp2[match.trainIdx].pt for match in inlier_matches])
+                    # Triangulate points
+                    new_point_cloud = self.triangulation(pts1, pts2, R1, t1, R2, t2)
+                    # Calculate reprojection errors and filter points
+                    errors1, _ = self.get_reprojection_errors(pts1, R1, t1, new_point_cloud)
+                    errors2, _ = self.get_reprojection_errors(pts2, R2, t2, new_point_cloud)
+                    reprojection_errors = np.mean([errors1, errors2], axis=0)
+                    valid_indices = [i for i, error in enumerate(reprojection_errors) if error < self.opts.reprojection_thres]
 
-                        # Get the pose of the views
-                        R1, t1, _ = self.image_data[prev_name]
-                        R2, t2, _ = self.image_data[name]
+                    # Filter new_point_cloud and matches based on reprojection errors
+                    new_point_cloud = new_point_cloud[valid_indices]
+                    matches = [matches[i] for i in valid_indices]
+                    
+                    # # Update the point cloud and the reference arrays
+                    self.point_cloud = np.concatenate((self.point_cloud, new_point_cloud), axis=0)
 
-                        # Triangulate points
-                        new_point_cloud = self.triangulation(inlier_pts1, inlier_pts2, R1, t1, R2, t2)
+                    for i, match in enumerate(matches):
+                        prev_name_ref[match.queryIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
+                        new_name_ref[match.trainIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
 
-                        # Update the point cloud and the reference arrays
-                        self.point_cloud = np.concatenate((self.point_cloud, new_point_cloud), axis=0)
+                    # for match in matches_other:
+                    #     new_name_ref[match.trainIdx] = prev_name_ref[match.queryIdx]
 
-                        for i, match in enumerate(inlier_matches):
-                            prev_name_ref[match.queryIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
-                            new_name_ref[match.trainIdx] = self.point_cloud.shape[0] - new_point_cloud.shape[0] + i
+                    self.image_data[prev_name][-1] = prev_name_ref
+                    self.image_data[name][-1] = new_name_ref
 
-                        for match in matches_other:
-                            new_name_ref[match.trainIdx] = prev_name_ref[match.queryIdx]
-
-                        self.image_data[prev_name][-1] = prev_name_ref
-                        self.image_data[name][-1] = new_name_ref
-                    else:
-                        print('No inliers found for {} and {}'.format(prev_name, name))
                 else:
                     print('Skipping {} and {}'.format(prev_name, name))
         
@@ -461,25 +483,23 @@ class SFM(object):
         pts3d = self.point_cloud[ref[ref >= 0].astype(int)]
         pts2d = np.array([kp[idx].pt for idx in np.where(ref >= 0)[0]])
 
-        # Projecting 3D points to 2D
-        pts2d_proj, _ = cv2.projectPoints(pts3d, R, t, self.K, None)
-        pts2d_proj = pts2d_proj.squeeze()
+        # Get reprojection errors
+        errors, pts_proj = self.get_reprojection_errors(pts2d, R, t, pts3d)
 
-        # Calculating reprojection error
-        errors = np.linalg.norm(pts2d - pts2d_proj, axis=1)
+        # Calculating average reprojection error
         err = np.mean(errors)
 
         # TODO: PLOT here
         if self.opts.plot_error: 
             fig,ax = plt.subplots()
             image = cv2.imread(os.path.join(self.images_dir, name+'.jpg'))[:,:,::-1]
-            ax = draw_correspondences(image, pts2d, pts2d_proj, ax)
+            ax = draw_correspondences(image, pts2d, pts_proj, ax)
             ax.set_title('reprojection error = {}'.format(err))
             fig.savefig(os.path.join(self.out_err_dir, '{}.png'.format(name)))
             plt.close(fig)
             
         return err
-        
+
     def run(self):
         """
         Runs the structure from motion algorithm.
@@ -506,12 +526,16 @@ class SFM(object):
         print('Baseline Cameras {0}, {1}: Pose Estimation [time={2:.3}s]'.format(name1, name2, this_time))
 
         self.triangulate_two_views(name1, name2)
+
         t1 = time()
+        
         this_time = t1-t2
         total_time += this_time
         print('Baseline Cameras {0}, {1}: Baseline Triangulation [time={2:.3}s]'.format(name1, name2, this_time))
 
         views_done = 2 
+        self.processed_image_names.append(name1)
+        self.processed_image_names.append(name2)
 
         #3d point cloud generation and reprojection error evaluation
         self.generate_ply(os.path.join(self.out_cloud_dir, 'cloud_{}_view.ply'.format(views_done)))
@@ -540,6 +564,8 @@ class SFM(object):
             this_time = t1-t2
             total_time += this_time
             print('Camera {0}: Triangulation [time={1:.3}s]'.format(new_name, this_time))
+            self.processed_image_names.append(new_name)
+            # self.bundle_adjustment()
 
             #3d point cloud update and error for new camera
             views_done += 1 
@@ -548,6 +574,7 @@ class SFM(object):
             new_err = self.compute_reprojection_error(new_name)
             errors.append(new_err)
             print('Camera {}: Reprojection Error = {}'.format(new_name, new_err))
+            
 
         mean_error = sum(errors) / float(len(errors))
         print('Reconstruction Completed: Mean Reprojection Error = {2} [t={0:.6}s], Results stored in {1}'.format(total_time, self.opts.out_dir, mean_error))
