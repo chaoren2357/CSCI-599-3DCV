@@ -4,20 +4,31 @@
 The following tutorial will go through you with how to use three.js for your assignment visualization. Please make sure your VScode is installed with "Live Server" plugin.
 
 ## Table of Contents
-- [How to use](#how-to-use)
-- [Assignment 1: Geometry Processing](#assignment-1-geometry-processing)
-    - [Introduction](#introduction)
-    - [Requirements / Rubric](#requirements--rubric)
-    - [My Result](#my-result)
-        - [Loop subdivision](#loop-subdivision)
-        - [Quadratic Error based mesh decimation](#quadratic-error-based-mesh-decimation)
-- [Assignment 2: Structure From Motion](#assignment-2-structure-from-motion)
-    - [Introduction](#introduction-1)
-    - [Requirements / Rubric](#requirements--rubric-1)
-- [Assignment 3: NeRF / 3DGS](#assignment-3-nerf--3dgs)
-    - [Introduction](#introduction-2)
-    - [Requirements / Rubric](#requirements--rubric-2)
-    
+1. [How to use](#how-to-use)
+2. [Assignment 1: Geometry Processing](#assignment-1-geometry-processing)
+   - [Mesh Decimation](#mesh-decimation)
+   - [Introduction](#introduction-1)
+   - [Requirements / Rubric](#requirements--rubric)
+   - [My Result](#my-result)
+     * [Loop subdivision](#loop-subdivision)
+     * [Quadratic Error based mesh decimation](#quadratic-error-based-mesh-decimation)
+3. [Assignment 2: Structure From Motion](#assignment-2-structure-from-motion)
+   - [Introduction](#introduction-2)
+   - [Requirements / Rubric](#requirements--rubric-1)
+   - [My Results](#my-results)
+     * [Extra Credit - My Dataset](#extra-credit---my-dataset)
+     * [Extra Credit - Post-Processing for Point Cloud](#extra-credit---post-processing-for-point-cloud)
+     * [Extra Credit - Bundle Adjustment](#extra-credit---bundle-adjustment)
+4. [Assignment 3: NeRF / 3DGS](#assignment-3-nerf--3dgs)
+   - [Introduction](#introduction-3)
+   - [Requirements / Rubric](#requirements--rubric-2)
+   - [My result](#my-result-1)
+     * [Data Collection](#data-collection)
+     * [COLMAP Reconstruction](#colmap-reconstruction)
+     * [NeRF](#nerf)
+     * [3D Gaussian Splatting](#3d-gaussian-splatting)
+
+
 ## How to use
 ```shell
 git clone https://github.com/jingyangcarl/CSCI599.git
@@ -205,3 +216,59 @@ The following files are used:
 * up to 20 pts: Train your model with language embedding (e.g., LERF).
 
 For all extra credit, be sure to demonstrate in your write up cases where your extra credit.
+
+### My result
+In this project, I leveraged the Carla simulator to collect a dataset from the Town10HD map, consisting of 378 images split evenly between aerial and street views. These images served as the basis for constructing a 3D scene using both Colmap and NeRF techniques.
+
+#### Data Collection
+The dataset comprises 378 images obtained from two perspectives:
+- Aerial view
+- Street view
+
+These images were sourced from the [Carla Simulator](https://carla.org/), specifically from the Town10HD map. Below is a GIF that illustrates all the input views:
+
+![Input Views](images/hw3_input.gif)
+
+#### COLMAP Reconstruction
+Utilizing the known camera poses, I built a 3D model with COLMAP. The precise camera poses contributed to a high-quality point cloud, suggesting accurate reconstruction in alignment with the real-world scene layout.
+
+![Colmap Result](images/hw3_colmap.gif)
+
+#### NeRF 
+I employed NeRF Studio for training a vanilla NeRF model based on the initial COLMAP results. The NeRF training was configured as follows:
+
+- **Iterations:** 30,000
+- **Optimizer:** Adam, starting learning rate of 0.01, with exponential decay.
+- **Precision:** Mixed precision for efficient training.
+
+Further configuration details for the NeRF model include:
+- **Base Resolution:** 16
+- **Maximum Resolution:** 2048
+- **Number of Levels:** 16
+- **Hidden Dimensions:** 64 for both density and color
+
+The NeRF model effectively generated a 3D representation of the scene, accurately capturing both geometric and photometric details. Below is a GIF that showcases the NeRF results:
+
+However, it can be seen that in parts where there is insufficient information, such as the edges of the city or areas with less photo coverage, the scene becomes blurry and the geometric reconstruction is not accurate.
+
+![NeRF Results](images/hw3_nerf.gif)
+
+#### 3D Gaussian Splatting
+3D Gaussian Splatting is a volumetric rendering technique optimized for achieving high-quality geometric reconstructions. This method utilizes an advanced training regimen and parameter optimization designed to refine and densify the representation of a scene over time.
+
+The configuration for training the 3D Gaussian Splatting model includes:
+- **Iterations:** 30,000
+- **Checkpoint Iterations:** Every 7,000 iterations up to 30,000
+- **Learning Rate Adjustments:** Position learning rate starts at 0.00016 and decays exponentially to 0.0000016, while feature, opacity, scaling, and rotation rates are individually tuned for optimal results.
+
+In terms of structure optimization:
+- **Density and Opacity Adjustments:** Are performed at specified intervals, with mechanisms to increase density and reset opacity to handle areas of low information.
+- **Loss Function:** Utilizes a lambda DSSIM parameter of 0.2 to balance fidelity and computational efficiency.
+
+The resulting 3D reconstructions from Gaussian Splatting are generally more accurate in terms of geometry compared to those from NeRF. The main difference lies in how the techniques handle areas with sparse information. Unlike NeRF, which attempts to interpolate and fill these areas with estimated colors, 3D Gaussian Splatting leaves them black, showcasing no information. However, a noted downside of this method is the occurrence of floaters – objects that appear to float in the sky, which can detract from the visual coherence of the scene.
+
+![3DGS Results](images/hw3_gs.gif)
+
+#### Extra credit summary
+- My own dataset
+- Training both nerf and 3d gaussian splatting

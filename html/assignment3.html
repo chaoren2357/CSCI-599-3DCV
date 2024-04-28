@@ -41,8 +41,51 @@
 					<li>up to 20 pts: Train your model with language embedding (e.g., LERF).</li>
 				</ul>
 		</p>
-		<h2>NeRF/3DGS</h2>
-        <div id="container"></div>
-		<script type="module" src="../js/assignment3.js"></script>
+		<h2>My Results</h2>
+<p>This project utilized the Carla simulator to collect a dataset from the Town10HD map, comprising 378 images split evenly between aerial and street views, which formed the basis for constructing a 3D scene using both Colmap and NeRF techniques.</p>
+
+<h3>Data Collection</h3>
+<p>The dataset consists of 378 images captured from two perspectives: Aerial view and Street view. These images were sourced from the <a href="https://carla.org/">Carla Simulator</a>, specifically from the Town10HD map. Below is a GIF that illustrates all the input views:</p>
+<img src="/images/hw3_input.gif" style="width: 100%;">
+
+<h3>COLMAP Reconstruction</h3>
+<p>Using the known camera poses, a 3D model was built with COLMAP. The accurate camera poses enabled a high-quality point cloud, indicating a precise reconstruction in alignment with the real-world scene layout.</p>
+<img src="/images/hw3_colmap.gif" style="width: 100%;">
+
+<h3>NeRF</h3>
+<p>NeRF Studio was used for training a vanilla NeRF model based on the initial COLMAP results. The training configuration was as follows:</p>
+<ul>
+	<li>Iterations: 30,000</li>
+	<li>Optimizer: Adam, starting learning rate of 0.01, with exponential decay</li>
+	<li>Precision: Mixed precision for efficient training</li>
+</ul>
+<p>Further configuration details for the NeRF model include:</p>
+<ul>
+	<li>Base Resolution: 16</li>
+	<li>Maximum Resolution: 2048</li>
+	<li>Number of Levels: 16</li>
+	<li>Hidden Dimensions: 64 for both density and color</li>
+</ul>
+<p>The NeRF model effectively generated a 3D representation of the scene, capturing both geometric and photometric details accurately. Below is a GIF that showcases the NeRF results:</p>
+<img src="/images/hw3_nerf.gif" style="width: 100%;">
+
+<h3>3D Gaussian Splatting</h3>
+<p>3D Gaussian Splatting is a volumetric rendering technique optimized for achieving high-quality geometric reconstructions. The training configuration for this model includes:</p>
+<ul>
+	<li>Iterations: 30,000</li>
+	<li>Checkpoint Iterations: Every 7,000 iterations up to 30,000</li>
+	<li>Learning Rate Adjustments: Position learning rate starts at 0.00016 and decays exponentially to 0.0000016, while feature, opacity, scaling, and rotation rates are individually tuned for optimal results</li>
+</ul>
+<p>In terms of structure optimization:</p>
+<ul>
+	<li>Density and Opacity Adjustments: Performed at specified intervals, with mechanisms to increase density and reset opacity to handle areas of low information</li>
+	<li>Loss Function: Utilizes a lambda DSSIM parameter of 0.2 to balance fidelity and computational efficiency</li>
+</ul>
+<p>The resulting 3D reconstructions from Gaussian Splatting are generally more accurate in terms of geometry compared to those from NeRF. The main difference lies in how the techniques handle areas with sparse information. Unlike NeRF, which attempts to interpolate and fill these areas with estimated colors, 3D Gaussian Splatting leaves them black, showcasing no information. Below is a GIF that showcases the results:</p>
+<img src="/images/hw3_gs.gif" style="width: 100%;">
+
+<h3>Extra Credit Summary</h3>
+<p>For extra credit, 1. I captured my own dataset and 2. conducted training using both NeRF and 3D Gaussian Splatting techniques.</p>
+
 	</body>
 </html>
