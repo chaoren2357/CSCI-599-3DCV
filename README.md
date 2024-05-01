@@ -249,9 +249,11 @@ Further configuration details for the NeRF model include:
 
 The NeRF model effectively generated a 3D representation of the scene, accurately capturing both geometric and photometric details. Below is a GIF that showcases the NeRF results:
 
-However, it can be seen that in parts where there is insufficient information, such as the edges of the city or areas with less photo coverage, the scene becomes blurry and the geometric reconstruction is not accurate.
-
 ![NeRF Results](images/hw3_nerf.gif)
+
+The loss of images are 17.58. However, it can be seen that in parts where there is insufficient information, such as the edges of the city or areas with less photo coverage, the scene becomes blurry and the geometric reconstruction is not accurate.
+
+
 
 #### 3D Gaussian Splatting
 3D Gaussian Splatting is a volumetric rendering technique optimized for achieving high-quality geometric reconstructions. This method utilizes an advanced training regimen and parameter optimization designed to refine and densify the representation of a scene over time.
